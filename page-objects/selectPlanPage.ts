@@ -1,5 +1,6 @@
 import { expect, Locator, Page } from '@playwright/test';
 import { BasePage } from './basePage';
+import { ScheduleScanPage } from './scheduleScanPage';
 
 export class SelectPlanPage extends BasePage {
   readonly pageTitle: Locator;
@@ -14,87 +15,93 @@ export class SelectPlanPage extends BasePage {
   readonly lungCTCard: Locator;
   readonly modalContainer: Locator;
   readonly modalCloseButton: Locator;
-  readonly mriWhatsIncludedText: string;
+  readonly mriWhatsIncludedText: Array<string>;
   readonly pageHeader: Locator;
   readonly mriWhatsIncludedLink: Locator;
+
+  readonly SCAN_PLANS = {
+    MRI_SCAN: "MRI Scan",
+    MRI_SPINE: "MRI Scan with Spine",
+    MRI_SKELETAL: "MRI Scan with Skeletal and Neurological Assessment",
+    HEART_CT: "Heart CT Scan",
+    LUNG_CT: "Lungs CT Scan",
+  };
 
   constructor(page: Page) {
     super(page);
     this.pageTitle = page.getByRole('heading', { name: 'Review your Scan.' });
-    this.continueButton = page.getByRole('button', { name: 'Continue' });
+    this.continueButton = page.getByTestId('select-plan-submit-btn');
     this.cancelButton = page.getByRole('button', { name: 'Cancel' });
 
     // Locators for specific scan options based on their titles
-    this.mriScanCard = page.locator('div').filter({ hasText: /^MRI Scan$/ }).first();
-    this.mriWithSpineCard = page.locator('div').filter({ hasText: /^MRI Scan with Spine$/ });
-    this.fullBodyAdvancedCard = page.locator('div').filter({ hasText: /Skeletal and Neurological Assessment/ });
-    this.heartCTCard = page.locator('div').filter({ hasText: /^Heart CT Scan$/ });
-    this.lungCTCard = page.locator('div').filter({ hasText: /^Lungs CT Scan$/ });
+    this.mriScanCard = page.getByRole('listitem').filter({ 
+    has: page.locator('.h4').getByText(this.SCAN_PLANS.MRI_SCAN, { exact: true }) 
+  });
+  
+    this.mriWithSpineCard = page.getByRole('listitem').filter({ 
+    has: page.locator('.h4').getByText(this.SCAN_PLANS.MRI_SPINE, { exact: true }) 
+  });
+ 
+    this.heartCTCard = page.getByRole('listitem').filter({
+    has: page.locator('.h4').getByText(this.SCAN_PLANS.HEART_CT, { exact: true })
+  });
 
-    this.mriWhatsIncludedText = "Scans for hundreds of potential conditions including cancers of the brain, thyroid, liver, gallbladder, pancreas, spleen, kidneys, adrenal glands, bladder, ovaries, uterus, and prostate. Also scans for signs of stroke, sinus inflammation, fatty liver, uterine fibroids, and abdominal aortic aneurysm.";
-    this.modalContainer = page.locator('role=dialog');
-    this.modalCloseButton = page.locator('role=dialog').getByRole('button').first();    
+    this.fullBodyAdvancedCard = page.getByRole('listitem').filter({
+    has: page.locator('.h4').getByText(this.SCAN_PLANS.MRI_SKELETAL, { exact: true })
+  });
+
+    this.lungCTCard = page.getByRole('listitem').filter({
+    has: page.locator('.h4').getByText(this.SCAN_PLANS.LUNG_CT, { exact: true })
+  });
+
+    this.mriWhatsIncludedText = ["Head", "Neck", "Abdomen", "Pelvis"];
+    this.modalContainer = page.locator('div.organ-included-content').filter({ visible: true });
+    this.modalCloseButton = this.modalContainer.getByRole('button').first();    
     this.pageHeader = page.getByRole('heading', { name: 'Review your Scan.' });
     // Locate the specific link within that card
-    this.mriWhatsIncludedLink = this.mriScanCard.getByText("What's Included");
+    this.mriWhatsIncludedLink = this.mriScanCard.getByRole('button', { name: 'What\'s Included' });
   }
 
 
-  async waitForPageToLoad() {
+  async waitForPageToLoad(): Promise<this> {
      await expect(this.mriScanCard).toBeVisible();
      await expect(this.mriWithSpineCard).toBeVisible();
+     return this;
   }
 
-  /**
-   * Selects a scan plan by clicking on its title or container
-   * @param plan The locator of the scan card to select
-   */
-  async selectPlan(plan: Locator) {
+  async selectPlan(plan: Locator): Promise<this> {
     await plan.click();
+    return this;
   }
 
-  async clickContinue() {
+  async clickContinue(): Promise<ScheduleScanPage> {
     await this.continueButton.click();
+    return new ScheduleScanPage(this.page);
   }
 
-  /**
-   * Gets the price text for a specific plan
-   * @param plan The locator of the scan card
-   */
   async getPlanPrice(plan: Locator): Promise<string | null> {
     return await plan.locator('text=/Available at \$\d+/').textContent();
   }
 
-   async openMriWhatsIncluded() {
-    const whatsIncluded =  this.mriScanCard.getByText("What's Included")
-    await this.scrollDownToElement(whatsIncluded)
-    await whatsIncluded.click();
+   async openMriWhatsIncluded(): Promise<this> {
+    await this.mriWhatsIncludedLink.click();
+    return this;
   }
 
-  /**
-   * Verifies the MRI Scan modal title and the specific content string
-   */
-  async verifyMriWhatsIncludedContent() {
+  async verifyMriWhatsIncludedContent(): Promise<this> {
     await expect(this.modalContainer).toBeVisible();
-    
-    // Verify Header
-    const header = this.modalContainer.getByRole('heading', { name: 'MRI Scan', exact: true });
-    await expect(header).toBeVisible();
-
     // Verify the specific body text is present in the modal
-    const bodyText = this.modalContainer.getByText(this.mriWhatsIncludedText);
-    await expect(bodyText).toBeVisible();
+    const bodyText = await this.modalContainer.textContent();
+    this.mriWhatsIncludedText.forEach((text) => {
+      expect(bodyText).toContain(text);
+    });
+    return this;
   }
 
-  async closeModal() {
+  async closeModal(): Promise<this> {
     await this.modalCloseButton.click();
     await expect(this.modalContainer).toBeHidden();
-  }
-
- async scrollToMriWhatsIncluded() {
-    this.scrollDownToElement(this.mriWhatsIncludedLink)
-    await this.mriWhatsIncludedLink
-    await expect(this.mriWhatsIncludedLink).toBeInViewport();
+    return this;
   }
 
 }
